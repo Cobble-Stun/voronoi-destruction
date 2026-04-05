@@ -129,7 +129,7 @@ func MeshFromPolygon(polygon: Array[Vector2], thickness: float) -> mesh:
 	var ni = 0;
 	var ti = 0;
 
-	var ext = 0.5f * thickness;
+	var ext = 0.5f * thickness
 
 	# Top
 	for (int i = 0; i < count; i++) {
