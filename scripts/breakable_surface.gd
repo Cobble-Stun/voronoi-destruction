@@ -117,8 +117,8 @@ func Break(position: Vector2) -> void:
 		gameObject.active = false
 		queue_free()
 
-static Mesh MeshFromPolygon(List<Vector2> polygon, float thickness) {
-	var count = polygon.Count;
+func MeshFromPolygon(polygon: Array[Vector2], thickness: float) -> mesh:
+	var count = polygon.Count
 	# TODO: cache these things to avoid garbage
 	var verts = new Vector3[6 * count];
 	var norms = new Vector3[6 * count];
