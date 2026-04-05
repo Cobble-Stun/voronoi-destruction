@@ -1,6 +1,7 @@
 [gd_scene format=3 uid="uid://7fa08m5vsbsx"]
 
 [ext_resource type="PackedScene" uid="uid://coruyuaixjxdm" path="res://prefabs/player.tscn" id="1_37kl0"]
+[ext_resource type="Script" uid="uid://dttc6iigb6frl" path="res://scripts/breakable_surface.gd" id="2_8uh7m"]
 
 [sub_resource type="BoxMesh" id="BoxMesh_mf4mk"]
 size = Vector3(100, 1, 100)
@@ -11,6 +12,10 @@ data = PackedVector3Array(-50, 0.5, 50, 50, 0.5, 50, -50, -0.5, 50, 50, 0.5, 50,
 [sub_resource type="Environment" id="Environment_37kl0"]
 
 [sub_resource type="CapsuleMesh" id="CapsuleMesh_37kl0"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_6uqi0"]
+
+[sub_resource type="BoxMesh" id="BoxMesh_ppyta"]
 
 [node name="Node3D" type="Node3D" unique_id=931867716]
 
@@ -36,3 +41,16 @@ shadow_enabled = true
 [node name="MeshInstance3D" type="MeshInstance3D" parent="." unique_id=1362947935]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -3.8886743)
 mesh = SubResource("CapsuleMesh_37kl0")
+
+[node name="RigidBody3D" type="RigidBody3D" parent="." unique_id=297403992]
+contact_monitor = true
+max_contacts_reported = 1
+script = ExtResource("2_8uh7m")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="RigidBody3D" unique_id=399820616]
+shape = SubResource("BoxShape3D_6uqi0")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="RigidBody3D" unique_id=647989398]
+mesh = SubResource("BoxMesh_ppyta")
+
+[connection signal="body_entered" from="RigidBody3D" to="RigidBody3D" method="_on_body_entered"]

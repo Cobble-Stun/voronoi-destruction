@@ -1,220 +1,198 @@
-extends Node
+extends RigidBody3D
+class_name BreakableSurface
 
-namespace GK {
-	public class BreakableSurface : MonoBehaviour {
+var Filter: ImmediateMesh
+@onready var Renderer: MeshInstance3D = $MeshInstance3D
+@onready var Collider: CollisionShape3D = $CollisionShape3D
+@onready var Rigidbody: RigidBody3D = self
 
-		var Filter:      { get; private set; }
-		public MeshRenderer Renderer { get; private set; }
-		public MeshCollider Collider { get; private set; }
-		public Rigidbody Rigidbody   { get; private set; }
+var Polygon: Array[Vector2] = []
+var Thickness: float = 1.0
+var MinBreakArea: float = 0.01
+var MinImpactToBreak: float = 50.0
 
-		public List<Vector2> Polygon;
-		public float Thickness = 1.0f;
-		public float MinBreakArea = 0.01f;
-		public float MinImpactToBreak = 50.0f;
+var ContactPoint
 
-		float _Area = -1.0f;
+var _Area: float = -1.0
 
-		int age;
+var age:int
 
-		public float Area {
-			get {
-				if (_Area < 0.0f) {
-					_Area = Geom.Area(Polygon);
-				}
+func Area() -> float:
+	if _Area < 0.0:
+		_Area = Geom.Area(Polygon);
+	return _Area
 
-				return _Area;
-			}
-		}
+func _ready():
+	age = 0
+	Reload()
 
-		void Start() {
-			age = 0;
+func Reload() -> void:
+	var pos = transform.position
 
-			Reload();
-		}
+	if Polygon.size() == 0:
+		#Assume its a cube with localScale dimensions
+		scale = 0.5 * scale
 
-		public void Reload() {
-			var pos = transform.position;
+		Polygon.push_back(Vector2(-scale.x, -scale.y))
+		Polygon.push_back(Vector2(scale.x, -scale.y))
+		Polygon.push_back(Vector2(scale.x, scale.y))
+		Polygon.push_back(Vector2(-scale.x, scale.y))
 
-			if (Filter == null) Filter = GetComponent<MeshFilter>();
-			if (Renderer == null) Renderer = GetComponent<MeshRenderer>();
-			if (Collider == null) Collider = GetComponent<MeshCollider>();
-			if (Rigidbody == null) Rigidbody = GetComponent<Rigidbody>();
+		Thickness = 2.0 * scale.z
 
-			if (Polygon.Count == 0) {
-				#Assume its a cube with localScale dimensions
-				var scale = 0.5f * transform.localScale;
+		scale = Vector3.one
 
-				Polygon.Add(new Vector2(-scale.x, -scale.y));
-				Polygon.Add(new Vector2(scale.x, -scale.y));
-				Polygon.Add(new Vector2(scale.x, scale.y));
-				Polygon.Add(new Vector2(-scale.x, scale.y));
+	var mesh = MeshFromPolygon(Polygon, Thickness);
 
-				Thickness = 2.0f * scale.z;
+	Filter.mesh = mesh
+	Collider.mesh = mesh
 
-				transform.localScale = Vector3.one;
-			}
+func _integrate_forces(state):
+	ContactPoint = state.get_contact_collider_position(0)
 
-			var mesh = MeshFromPolygon(Polygon, Thickness);
+func _physics_process(delta: float) -> void:
+	var pos = position
+	age += 1
+	if pos.magnitude > 1000.0:
+		queue_free()
 
-			Filter.sharedMesh = mesh;
-			Collider.sharedMesh = mesh;
-		}
+func _on_body_entered(body: Node) -> void:
+	if age > 5 && body.velocity > MinImpactToBreak:
+		var pnt = ContactPoint
+		Break((Vector2)transform.InverseTransformPoint(pnt))
 
-		void FixedUpdate() {
-			var pos = transform.position;
+func NormalizedRandom(mean: float, stddev: float ) -> float:
+	var rng = RandomNumberGenerator.new()
+	rng.randomize()
+	var u1 = rng.randf()
+	var u2 = rng.randf()
 
-			age++;
-			if (pos.magnitude > 1000.0f) {
-				DestroyImmediate(gameObject);
-			}
-		}
+	var randStdNormal = sqrt(-2.0 * log(u1)) * sin(2.0 * PI * u2)
 
-		void OnCollisionEnter(Collision coll) {
-			if (age > 5 && coll.impactForceSum.magnitude > MinImpactToBreak) {
-				var pnt = coll.contacts[0].point;
-				Break((Vector2)transform.InverseTransformPoint(pnt));
-			}
-		}
+	return mean + stddev * randStdNormal
 
-		static float NormalizedRandom(float mean, float stddev) {
-			var u1 = UnityEngine.Random.value;
-			var u2 = UnityEngine.Random.value;
+func Break(position: Vector2) -> void:
+	var rng = RandomNumberGenerator.new()
+	rng.randomize()
+	var area = Area
+	if area > MinBreakArea:
+		#seperate classes
+		#var calc = new VoronoiCalculator()
+		#var clip = new VoronoiClipper()
 
-			var randStdNormal = Mathf.Sqrt(-2.0f * Mathf.Log(u1)) *
-				Mathf.Sin(2.0f * Mathf.PI * u2);
+		var sites: Array[Vector2]
 
-			return mean + stddev * randStdNormal;
-		}
+		for i in range(0, sites.size()):
+			var dist = Mathf.Abs(NormalizedRandom(0.5, 1.0/2.0))
+			var angle = 2.0 * PI * rng.randf()
 
-		public void Break(Vector2 position) {
-			var area = Area;
-			if (area > MinBreakArea) {
-				var calc = new VoronoiCalculator();
-				var clip = new VoronoiClipper();
+			sites[i] = position + Vector2(dist * cos(angle), dist * sin(angle))
 
-				var sites = new Vector2[10];
+		var diagram = calc.CalculateDiagram(sites)
 
-				for (int i = 0; i < sites.Length; i++) {
-					var dist = Mathf.Abs(NormalizedRandom(0.5f, 1.0f/2.0f));
-					var angle = 2.0f * Mathf.PI * Random.value;
+		var clipped: Array[Vector2]
 
-					sites[i] = position + new Vector2(
-							dist * Mathf.Cos(angle),
-							dist * Mathf.Sin(angle));
-				}
+		for i in range(i, sits.size()):
+			#clip.ClipSite(diagram, Polygon, i, ref clipped)
 
-				var diagram = calc.CalculateDiagram(sites);
+			if clipped.Count > 0:
+				var newGo = duplicate()
+				get_parent().add_child(new_node)
 
-				var clipped = new List<Vector2>();
+				newGo.position = postion
+				newGo.rotation = rotation
 
-				for (int i = 0; i < sites.Length; i++) {
-					clip.ClipSite(diagram, Polygon, i, ref clipped);
+				var bs = newGo.get_script()
 
-					if (clipped.Count > 0) {
-						var newGo = Instantiate(gameObject, transform.parent);
+				bs.Thickness = Thickness
+				bs.Polygon.clear()
+				bs.Polygon.AddRange(clipped)
 
-						newGo.transform.localPosition = transform.localPosition;
-						newGo.transform.localRotation = transform.localRotation;
+				var childArea = bs.Area
 
-						var bs = newGo.GetComponent<BreakableSurface>();
+				var rb = bs.get_node("RigidBody3D")
 
-						bs.Thickness = Thickness;
-						bs.Polygon.Clear();
-						bs.Polygon.AddRange(clipped);
+				rb.mass = Rigidbody.mass * (childArea / area)
 
-						var childArea = bs.Area;
+		gameObject.active = false
+		queue_free()
 
-						var rb = bs.GetComponent<Rigidbody>();
+static Mesh MeshFromPolygon(List<Vector2> polygon, float thickness) {
+	var count = polygon.Count;
+	# TODO: cache these things to avoid garbage
+	var verts = new Vector3[6 * count];
+	var norms = new Vector3[6 * count];
+	var tris = new int[3 * (4 * count - 4)];
+	# TODO: add UVs
 
-						rb.mass = Rigidbody.mass * (childArea / area);
-					}
-				}
+	var vi = 0;
+	var ni = 0;
+	var ti = 0;
 
-				gameObject.active = false;
-				Destroy(gameObject);
-			}
-		}
+	var ext = 0.5f * thickness;
 
-		static Mesh MeshFromPolygon(List<Vector2> polygon, float thickness) {
-			var count = polygon.Count;
-			# TODO: cache these things to avoid garbage
-			var verts = new Vector3[6 * count];
-			var norms = new Vector3[6 * count];
-			var tris = new int[3 * (4 * count - 4)];
-			# TODO: add UVs
-
-			var vi = 0;
-			var ni = 0;
-			var ti = 0;
-
-			var ext = 0.5f * thickness;
-
-			# Top
-			for (int i = 0; i < count; i++) {
-				verts[vi++] = new Vector3(polygon[i].x, polygon[i].y, ext);
-				norms[ni++] = Vector3.forward;
-			}
-
-			# Bottom
-			for (int i = 0; i < count; i++) {
-				verts[vi++] = new Vector3(polygon[i].x, polygon[i].y, -ext);
-				norms[ni++] = Vector3.back;
-			}
-
-			#Sides
-			for (int i = 0; i < count; i++) {
-				var iNext = i == count - 1 ? 0 : i + 1;
-
-				verts[vi++] = new Vector3(polygon[i].x, polygon[i].y, ext);
-				verts[vi++] = new Vector3(polygon[i].x, polygon[i].y, -ext);
-				verts[vi++] = new Vector3(polygon[iNext].x, polygon[iNext].y, -ext);
-				verts[vi++] = new Vector3(polygon[iNext].x, polygon[iNext].y, ext);
-
-				var norm = Vector3.Cross(polygon[iNext] - polygon[i], Vector3.forward).normalized;
-
-				norms[ni++] = norm;
-				norms[ni++] = norm;
-				norms[ni++] = norm;
-				norms[ni++] = norm;
-			}
-
-
-			for (int vert = 2; vert < count; vert++) {
-				tris[ti++] = 0;
-				tris[ti++] = vert - 1;
-				tris[ti++] = vert;
-			}
-
-			for (int vert = 2; vert < count; vert++) {
-				tris[ti++] = count;
-				tris[ti++] = count + vert;
-				tris[ti++] = count + vert - 1;
-			}
-
-			for (int vert = 0; vert < count; vert++) {
-				var si = 2*count + 4*vert;
-
-				tris[ti++] = si;
-				tris[ti++] = si + 1;
-				tris[ti++] = si + 2;
-
-				tris[ti++] = si;
-				tris[ti++] = si + 2;
-				tris[ti++] = si + 3;
-			}
-
-			Debug.Assert(ti == tris.Length);
-			Debug.Assert(vi == verts.Length);
-
-			var mesh = new Mesh();
-
-
-			mesh.vertices = verts;
-			mesh.triangles = tris;
-			mesh.normals = norms;
-
-			return mesh;
-		}
+	# Top
+	for (int i = 0; i < count; i++) {
+		verts[vi++] = new Vector3(polygon[i].x, polygon[i].y, ext);
+		norms[ni++] = Vector3.forward;
 	}
-}
+
+	# Bottom
+	for (int i = 0; i < count; i++) {
+		verts[vi++] = new Vector3(polygon[i].x, polygon[i].y, -ext);
+		norms[ni++] = Vector3.back;
+	}
+
+	#Sides
+	for (int i = 0; i < count; i++) {
+		var iNext = i == count - 1 ? 0 : i + 1;
+
+		verts[vi++] = new Vector3(polygon[i].x, polygon[i].y, ext);
+		verts[vi++] = new Vector3(polygon[i].x, polygon[i].y, -ext);
+		verts[vi++] = new Vector3(polygon[iNext].x, polygon[iNext].y, -ext);
+		verts[vi++] = new Vector3(polygon[iNext].x, polygon[iNext].y, ext);
+
+		var norm = Vector3.Cross(polygon[iNext] - polygon[i], Vector3.forward).normalized;
+
+		norms[ni++] = norm;
+		norms[ni++] = norm;
+		norms[ni++] = norm;
+		norms[ni++] = norm;
+	}
+
+
+	for (int vert = 2; vert < count; vert++) {
+		tris[ti++] = 0;
+		tris[ti++] = vert - 1;
+		tris[ti++] = vert;
+	}
+
+	for (int vert = 2; vert < count; vert++) {
+		tris[ti++] = count;
+		tris[ti++] = count + vert;
+		tris[ti++] = count + vert - 1;
+	}
+
+	for (int vert = 0; vert < count; vert++) {
+		var si = 2*count + 4*vert;
+
+		tris[ti++] = si;
+		tris[ti++] = si + 1;
+		tris[ti++] = si + 2;
+
+		tris[ti++] = si;
+		tris[ti++] = si + 2;
+		tris[ti++] = si + 3;
+	}
+
+	#Debug.Assert(ti == tris.Length);
+	#Debug.Assert(vi == verts.Length);
+
+	var mesh = new Mesh();
+
+
+	mesh.vertices = verts;
+	mesh.triangles = tris;
+	mesh.normals = norms;
+
+	return mesh
